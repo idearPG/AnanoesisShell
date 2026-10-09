@@ -2,7 +2,7 @@
 
 - [x] 1.1 三仓打 v0.1.0 tag：主控 `git tag -a v0.1.0 -m "release: v0.1.0 desktop client"`，frontend/backend 同理，验证 `git tag -l` 列出 v0.1.0
 - [x] 1.2 三仓创建 feature/v0.2.0-improvements 分支并切换，验证 `git branch --show-current` 输出正确
-- [ ] 1.3 推送 tag 和分支到远端并验证远端可见（三仓各 `git push origin v0.1.0` + `git push origin feature/v0.2.0-improvements`）；分支推送已由 remote-tracking refs 佐证（backend 远端指向与本地 HEAD 一致），远端 tag 待网络恢复后 `git ls-remote` 复查
+- [x] 1.3 推送 tag 和分支到远端并验证远端可见（三仓各 `git push origin v0.1.0` + `git push origin feature/v0.2.0-improvements`）；全部成功（backend/main tag 已在远端，frontend tag 补推成功；三仓分支均推送至 d6de90f/8390ca5/22a4054）
 
 ## 2. 终端剪贴板集成（前端）
 

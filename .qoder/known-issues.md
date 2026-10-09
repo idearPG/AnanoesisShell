@@ -308,7 +308,43 @@
 **解决方案**: 新增 `frontend/desktop/installer/installer.nsh` 经 `nsis.include` 注入 `customInstall` 宏（在 addDesktopLink 之后执行）：无条件 Delete+CreateShortCut 重建桌面 lnk（参数与模板一致）→ SHChangeNotify(SHCNE_UPDATEIMAGE+FLUSH / SHCNE_ASSOCCHANGED+FLUSH) 弃图标缓存 → `ie4uinit.exe -show` 兑底。注入机制用对照实验坐实：临时塞非法指令 BogusCommandProbeXYZ → makensis 报「Error in macro customInstall … installSection.nsh on line 82」→ 删除探针重建 exit=0。注意 nsh 不能放默认 build/ 位（构建脚本每次清空该暂存目录），放固定的 installer/ 目录；getResource 对找不到的 include 会抛 InvalidConfigurationError，构建成功即路径解析正确。
 **预防措施**: ①“图标没变”类反馈先取证已装 exe 时间戳判断用户装的是哪版包，再查 lnk 写入时间判断快捷方式是否被重建，两层原因处置完全不同；②验证“配置真的生效”不能只看构建 exit=0（静默跳过也绿），用故意破坏法对照实验证明注入链路存在；③NSIS 自定义宏的执行时机查模板源码确认（customInstall 在 addDesktopLink 之后），不要凭文档记忆。
 
+## 31. 嵌套 Shell（docker exec -it ... bash）后 Agent 停止响应：Shell 集成钩子函数不经环境继承，帧静默缺失
+
+**发现时间**: 2026-10-08
+**影响范围**: Agent 模式下用户通过 `docker exec -it <container> bash` 或任何方式启动嵌套 bash 后的全部命令执行
+**症状**: 用户进入 Docker 容器后，Agent 提问不再执行命令，模型反复思考不执行或超时；Shell 模式不受影响（直连不经调度器）
+**根本原因**: `ShellIntegration.generateBashIntegrationCode` 把 PROMPT_COMMAND 设为调用 bash 函数 `_ananoesis_prompt_hook`；bash 环境变量（PROMPT_COMMAND 字符串）会被子进程继承，但 shell 函数定义不经 `export -f` 不随环境传递。嵌套 bash 每次提示符执行 PROMPT_COMMAND 时函数不存在 → 报错被静默吞掉 → CMD_END/PROMPT 集成帧零产出 → `PtyCommandScheduler` 在 AGENT_OWNED 状态下 `future.get` 一直等待至绝对超时。exec 通道不受影响（独立 SSH session），故障仅出现在依赖持久 PTY 帧边界的链路。与 #13 同族：集成代码在当前 shell 生效不等于在嵌套 shell 生效。
+**解决方案**: 帧超时探测 + 集成重安装：①`PtyCommandScheduler` 新增 `lastFrameNanos` 帧活动计时，MANUAL_IDLE 超过 `nestedDetectTimeout`（默认 8s）无帧则发送探测命令 `echo _ANANOESIS_NESTED_PROBE_$$`；②`collectOutput` 检测探测标记回显确认嵌套 Shell 存在，触发 `ShellIntegration.reinstall(nonce)` 用新 nonce 重新安装集成代码；③最多重装 1 次，仍无帧则降级 `nestedFallback=true`，`submitCommand` 抛异常走 exec 回落；④`SshProperties.nestedDetectTimeout` 配置项（默认 8 秒，0 禁用）。回归：`PtyCommandSchedulerTest` 2 用例 + `ShellIntegrationTest.reinstallGeneratesNewNonceAndCode` + `ShellIntegrationInstallerTest.reinstallProducesNewOutcome`。
+**预防措施**: ①注入 shell 变量/钩子的逻辑在任何后代 shell 里不一定可用——函数定义、别名、局部变量都不经环境继承，只有变量值会传递；②排查"进入容器/子shell后功能静默失效"类问题先检查注入机制跨进程存活能力；③"无帧"类静默失败必须有独立于命令超时的探测兆底（帧超时探测与命令空闲超时正交）。
+
+## 32. Agent 流式回复期间强制滚底，用户无法向上滚动查看历史
+
+**发现时间**: 2026-10-08
+**影响范围**: Agent 模式所有流式回复（SSE delta 高频写入）期间的终端滚动体验
+**症状**: Agent 回答时每次文本增量都把视口拉回底部，用户无法向上滚动查看之前的对话历史；只有等回复完全结束后才能松手
+**根本原因**: `TerminalTimeline.writeToTerminal()` 每次写入后无条件调用 `scrollToBottom()`，而 Agent 流式回复期间每个 SSE delta 都经此路径，高频触发（每 delta 一次）把用户滚动立即覆盖。与 #23 同源：终端渲染侧行为未考虑用户主动交互的优先级。
+**解决方案**: 滚动位置感知：①新增 `userScrolledAway` ref + `isViewportAtBottom()` 函数（`buffer.active.viewportY >= buffer.active.baseY - terminal.rows - 2`，容差 2 行）；②挂载 xterm `onScroll` 监听器，每次滚动后更新 `userScrolledAway`；③`writeToTerminal` 改为条件滚底（仅 `!userScrolledAway` 时 `scrollToBottom()`）；④`refit()`（切回 tab）保持无条件滚底（用户期望看到最新内容）；⑤用户滚回底部时自动恢复跟随。回归：`TerminalTimeline.spec.ts` 3 用例（滚动中写入不拉回/滚回底部恢复跟随/refit 无条件清除标志）。
+**预防措施**: ①终端自动滚底 MUST 以“用户未在查看历史”为前提，任何高频写入路径都要先检查滚动位置；②`refit()`/切回 tab 等场景的用户预期是“看到最新内容”，与流式写入的“不打扰用户查看历史”是两个独立语义，不能共用同一开关；③viewport API 封装为独立函数（`isViewportAtBottom()`），xterm.js 版本升级时只需改一处。
+
+## 33. Shell 模式人工命令对 Agent 不可见，记忆不同步
+
+**发现时间**: 2026-10-09
+**影响范围**: Shell 模式与 Agent 模式的上下文切换（用户进入 Docker 容器后 Agent 不知道）
+**症状**: 用户在 Shell 模式执行命令（如 `docker exec -it <container> bash`）后切换到 Agent 模式，Agent 不知道用户执行了什么命令，也不知道用户进入了嵌套 Shell，仍基于宿主机环境给出错误建议
+**根本原因**: `PtyCommandScheduler` 已能区分人工命令与 Agent 命令（CMD_START/CMD_END/PROMPT 帧序列），`ConversationService.saveShellEventMessage()` 已就绪但从未被生产代码调用——设计好了但没接线。同时 `nestedState` 探测结果仅用于内部集成重安装，不对外暴露
+**解决方案**: sync-shell-memory-to-agent 变更：①`PtyCommandScheduler` 增加 `ManualCommandListener` 回调接口和输出累积缓冲，人工命令完成后触发回调；②`SshTerminalService` 注入回调实现：写 `command_executions` 账本 + 写 `ai_messages` 对话历史；③`PtyCommandGateway.isNestedShell()` 暴露嵌套状态；④`AgentSystemPrompt.build()` 新增最近 Shell 活动和嵌套环境段落；⑤`AiAgentService.runTurn()` 和上下文恢复路径同步注入
+**预防措施**: ①新帧协议功能如果只写了 service 方法但没在生产代码中调用，应有集成测试覆盖接线点；②回调模式（与 `nestedShellCallback` 一致）保持调度器不依赖上层服务类的设计
+
+## 34. JaCoCo 分支覆盖率阈值从 0.70 提升到 0.75
+
+**发现时间**: 2026-10-09
+**影响范围**: 后端构建门禁（`mvnw verify`）
+**症状**: 无（主动提升）
+**根本原因**: 随测试覆盖逐步完善，实际覆盖率已超过 0.70，提升阈值确保新增代码保持较高覆盖水平
+**解决方案**: `backend/pom.xml` JaCoCo check 的 `<minimum>` 从 `0.70` 改为 `0.75`。排除规则不变（contract/entity/mapper/package-info/Application）
+**预防措施**: 渐进式提升策略，后续随测试完善继续逐步提升，不一刀切 100%
+
 ---
 
-**最后更新**: 2026-09-24
+**最后更新**: 2026-10-09
 **维护者**: AI Agent + 开发团队
