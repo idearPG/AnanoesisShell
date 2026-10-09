@@ -1,0 +1,8 @@
+id,7297987
+apiKey,sk-ws-H.PHXPXYP.erHc.MEUCIQCyu8IpdY5wboaBd-ym9h1WdAXkD8kntYhX5Xc76bYUQAIgUvEJ5PZTkIMV3zqouzq7Gma9t7Nh3FFoTOS046wVzfY
+apiHost,llm-ygusfm3iifvvrf0m.cn-beijing.maas.aliyuncs.com
+openAiCompatible,https://llm-ygusfm3iifvvrf0m.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+dashScope,https://llm-ygusfm3iifvvrf0m.cn-beijing.maas.aliyuncs.com/api/v1
+description,SDD项目使用
+workspaceName,默认业务空间
+workspaceId,llm-ygusfm3iifvvrf0m

@@ -85,7 +85,8 @@ if (-not $SkipBackend) {
   } finally { Pop-Location }
 }
 $jar = Get-ChildItem (Join-Path $backend 'target') -Filter 'ananoesis-shell-backend-*.jar' |
-  Where-Object { $_.Name -notmatch 'sources|original' } | Select-Object -First 1
+  Where-Object { $_.Name -notmatch 'sources|original' } |
+  Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if (-not $jar) { Die 'backend/target 下找不到 fat jar' }
 Step ("后端产物：{0}（{1:N1} MB）" -f $jar.Name, ($jar.Length / 1MB))
 

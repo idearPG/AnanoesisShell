@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AnanoesisShell 项目学习手册 —— 从 SSH 基础到生产级实现</title>
+<style>
+  :root{
+    --bg:#0f1420; --panel:#161d2e; --panel2:#1c2539; --ink:#d7deeb; --dim:#8a96ad;
+    --acc:#5aa7ff; --acc2:#7ee0b8; --warn:#ffb86b; --danger:#ff7b8a; --code:#0b101b;
+    --border:#26324d;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--ink);font:16px/1.75 "Segoe UI","Microsoft YaHei",sans-serif}
+  layout,main{display:block}
+  .wrap{display:flex;max-width:1400px;margin:0 auto}
+  nav{position:sticky;top:0;align-self:flex-start;width:270px;height:100vh;overflow-y:auto;
+      padding:24px 12px 40px;border-right:1px solid var(--border);background:var(--panel);flex-shrink:0}
+  nav h3{font-size:13px;color:var(--dim);letter-spacing:2px;margin:18px 8px 6px}
+  nav a{display:block;padding:6px 10px;color:var(--ink);text-decoration:none;border-radius:6px;font-size:14px}
+  nav a:hover{background:var(--panel2);color:var(--acc)}
+  main{flex:1;min-width:0;padding:36px 48px 120px}
+  h1{font-size:30px;margin-bottom:8px;background:linear-gradient(90deg,var(--acc),var(--acc2));
+     -webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--dim);margin-bottom:34px}
+  h2{font-size:24px;margin:56px 0 6px;padding-top:18px;border-top:1px solid var(--border);color:var(--acc)}
+  h2 .no{color:var(--dim);font-weight:normal;font-size:16px;margin-right:8px}
+  h3{font-size:18px;margin:30px 0 8px;color:var(--acc2)}
+  h4{font-size:16px;margin:20px 0 6px;color:var(--warn)}
+  p{margin:10px 0}
+  ul,ol{margin:10px 0 10px 26px}
+  li{margin:5px 0}
+  code{background:var(--code);border:1px solid var(--border);border-radius:4px;
+       padding:1px 6px;font:14px/1.6 Consolas,"JetBrains Mono",monospace;color:#ffd58a}
+  pre{background:var(--code);border:1px solid var(--border);border-radius:8px;
+      padding:16px;overflow-x:auto;margin:14px 0}
+  pre code{background:none;border:none;padding:0;color:#c8d3e8;font-size:13.5px}
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:14.5px}
+  th,td{border:1px solid var(--border);padding:8px 12px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--acc)}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+  .card{background:var(--panel);border:1px solid var(--border);border-left:4px solid var(--acc);
+        border-radius:8px;padding:14px 18px;margin:14px 0}
+  .card.why{border-left-color:var(--acc2)}
+  .card.warn{border-left-color:var(--warn)}
+  .card.danger{border-left-color:var(--danger)}
+  .card b.tag{display:inline-block;font-size:12px;color:var(--dim);letter-spacing:1px;margin-bottom:4px}
+  .term{display:inline-block;background:var(--panel2);border:1px solid var(--border);
+        border-radius:20px;padding:2px 12px;margin:3px;font-size:13.5px;color:var(--acc2)}
+  .flow{background:var(--code);border:1px solid var(--border);border-radius:8px;
+        padding:14px 18px;font:13px/1.9 Consolas,monospace;white-space:pre;overflow-x:auto;color:#9fd0ff}
+  .kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:14px 0}
+  .kv>div{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:12px 16px}
+  .kv b{display:block;font-size:24px;color:var(--acc)}
+  .kv span{font-size:13px;color:var(--dim)}
+  .qa{border:1px solid var(--border);border-radius:8px;margin:10px 0;overflow:hidden}
+  .qa summary{cursor:pointer;padding:12px 16px;background:var(--panel2);color:var(--acc);font-weight:600}
+  .qa div{padding:12px 16px}
+  .resume{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:20px 24px;margin:16px 0}
+  .resume h4{margin-top:0;color:var(--acc)}
+  .resume li{margin:8px 0}
+  .pill{font-size:12px;background:var(--code);border:1px solid var(--border);border-radius:4px;
+        padding:1px 8px;color:var(--dim);margin-left:8px}
+  footer{margin-top:80px;color:var(--dim);font-size:13px;border-top:1px solid var(--border);padding-top:18px}
+  @media (max-width:900px){nav{display:none}main{padding:24px 18px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav>
+  <h3>目录</h3>
+  <a href="#ch1">1 · 项目全景</a>
+  <a href="#ch2">2 · SSH 领域入门</a>
+  <a href="#ch3">3 · 技术栈地图</a>
+  <a href="#ch4">4 · 架构与设计思想</a>
+  <a href="#ch5">5 · 终端链路深潜</a>
+  <a href="#ch6">6 · AI Agent 与审批闸门</a>
+  <a href="#ch7">7 · 安全设计与 JWT 原理</a>
+  <a href="#ch8">8 · SFTP 文件传输</a>
+  <a href="#ch9">9 · 工程质量体系</a>
+  <a href="#ch10">10 · 简历与面试弹药</a>
+  <a href="#appendix">附录 · 术语速查</a>
+</nav>
+<main>
+<h1>AnanoesisShell 项目学习手册</h1>
+<p class="sub">从 SSH 基础术语到生产级实现思想 · 由浅入深 · 全部内容对照本仓库真实代码</p>
+
+<!-- ============================================================ -->
+<h2 id="ch1"><span class="no">第一章</span>项目全景：这到底是个什么东西</h2>
+
+<h3>1.1 一句话定义</h3>
+<p><b>AnanoesisShell 是一个"带 AI 副驾驶的多连接 SSH 运维终端"</b>：浏览器/桌面壳里打开网页，就能连接 Linux 服务器敲命令、传文件，
+并且可以让大模型（LLM）替你执行运维任务——但 AI 的每一个<b>有副作用的操作</b>（跑命令、写文件、删除）都必须经过人工审批闸门。</p>
+
+<p>对标产品是腾讯云 OrcaTerm（网页版 SSH 客户端），差异点是深度集成了 AI Agent 与"人机协同"安全模型。</p>
+
+<h3>1.2 三种使用形态</h3>
+<table>
+<tr><th>形态</th><th>说明</th><th>关键设计</th></tr>
+<tr><td>浏览器直连</td><td>后端 Spring Boot 起在本机/服务器，前端 Vue3 页面访问 REST + WebSocket</td><td>前端构建产物由后端<b>同源托管</b>，规避 CORS 与跨域 Cookie 问题</td></tr>
+<tr><td>Electron 桌面壳</td><td>v0.1.0 发布 Windows 安装包；壳拉起后端子进程</td><td>后端强制绑定 <code>127.0.0.1</code> 回环 + <b>启动令牌授权</b>（第七章详解）</td></tr>
+<tr><td>数据全部本地</td><td>SQLite 单文件 + 操作系统密钥库，无云端账号体系</td><td>凭据密文存储，主密钥由 OS keyring 托管</td></tr>
+</table>
+
+<h3>1.3 仓库拓扑：Git Submodule 三仓结构</h3>
+<div class="flow">AnanoesisShell/            ← 主仓：文档、契约(contract/)、规格(openspec/)、脚本
+├── backend/              ← 子仓①：Spring Boot 3.5 后端（Java 21）
+├── frontend/             ← 子仓②：Vue3 + Vite 前端
+└── contract/             ← openapi.yaml + asyncapi.yaml（前后端唯一事实源）</div>
+<div class="card why"><b class="tag">WHY 这样设计</b>
+主仓通过 submodule 指针（一个 commit SHA）锁定前后端版本，形成"版本三元组"：
+主仓某次提交 = 后端某提交 + 前端某提交。发布 v0.1.0 时三个仓库各自打 tag，指针保证可精确复现任意历史版本的完整系统。
+这也是为什么每次交付要"子仓先推送、主仓再更新指针"——指针指向的 commit 必须在远端存在，否则别人 clone 后拉不到。</div>
+
+<h3>1.4 一次请求的旅程（全景 Mental Model）</h3>
+<div class="flow">你敲键盘 ──WebSocket──▶ TerminalWebSocketHandler ──写入──▶ PTY主端(sshj ShellChannel) ──SSH加密通道──▶ 远端 sshd ──▶ bash
+                                                                                              │
+远端输出 ◀──SSH通道── PTY从端(/dev/pts/N) ◀── bash 的 stdout/stderr ◀──────────────────────────┘
+   │
+   ▼
+读泵线程 → ShellFrameDecoder(剥离OSC控制帧) → PtyCommandScheduler(命令归属采集) → WebSocket → xterm.js 渲染</div>
+<p>把这张图记住，后面所有章节都是在给这条链路的某个环节做展开。</p>
+
+<!-- ============================================================ -->
+<h2 id="ch2"><span class="no">第二章</span>SSH 领域入门：术语与协议原理</h2>
+
+<p>本章是全书的地基。读完你就能看懂 <code>backend/src/main/java/.../ssh/</code> 包里 30 多个类在干什么。</p>
+
+<h3>2.1 SSH 是什么：不是"加密的 Telnet"</h3>
+<p>SSH（Secure Shell）协议解决三件事：<b>加密传输</b>（防窃听）、<b>身份认证</b>（防冒充）、<b>通道复用</b>（一条 TCP 连接跑多种会话）。
+协议在 RFC 4251-4254 定义，分三层：</p>
+<table>
+<tr><th>层</th><th>职责</th><th>本项目对应</th></tr>
+<tr><td>传输层 Transport<br><span class="pill">RFC 4253</span></td><td>TCP 之上做密钥交换(KEX)、协商加密算法、服务器身份验证、完整性校验</td><td>sshj 库内部完成；<code>SshConnectionService</code> 配置超时/keepalive</td></tr>
+<tr><td>认证层 User Authentication<br><span class="pill">RFC 4252</span></td><td>密码、公钥、键盘交互等方式证明"我是谁"</td><td><code>SshAuthMethod</code>（PASSWORD/PUBLIC_KEY）、<code>CredentialBackedSshTargetResolver</code> 从密钥库取凭据</td></tr>
+<tr><td>连接层 Connection<br><span class="pill">RFC 4254</span></td><td>在已认证的传输连接上开多个<b>逻辑通道 Channel</b>：shell、exec、sftp、端口转发…</td><td>shell 通道→终端，exec 通道→Agent 命令，sftp 子系统→文件传输</td></tr>
+</table>
+
+<div class="card why"><b class="tag">WHY 通道复用很重要</b>
+一条 SSH 连接建立（密钥交换开销大，涉及非对称运算）后，开一个新 Channel 只是一次轻量消息交互。
+所以本项目"一个终端 tab 连接 = 一个 <code>SshTerminalSession</code>（持有 <code>SSHClient</code>）"，
+它的 shell 通道给你交互、exec 通道给 AI 跑命令、SFTP 通道传文件，共享同一份加密会话——这就是 <code>SessionRuntime</code> 把多角色聚合成一个对象的原因。</div>
+
+<h3>2.2 握手与主机密钥：为什么第一次连服务器会问"指纹对不对"</h3>
+<ol>
+<li>客户端连上 22 端口，双方交换支持的算法列表，用 <b>Diffie-Hellman（或曲线25519）</b> 协商出会话对称密钥——之后所有流量用对称加密（快）。</li>
+<li>服务器用自己的<b>主机私钥</b>对握手数据签名，客户端用"已知主机列表"里的公钥验签。这一步防的是<b>中间人攻击</b>：如果攻击者在中间换了自己的服务器，指纹对不上。</li>
+<li>本项目落点：sshj 的 <code>HostKeyVerifier</code> 接口。<code>SshConnectionService</code> 是全项目<b>唯一</b>创建 SSHClient 的地方（收口设计），
+主机密钥策略、超时、keepalive、失败分类四件事不允许散落到调用点——散落一处就有一处被绕过。</li>
+</ol>
+<div class="card warn"><b class="tag">注意</b>"首次连接信任 TOFU（Trust On First Use）+ 指纹留底"是运维客户端的标配话术。测试代码里 <code>verify() 返回 true</code> 的宽验签只允许出现在嵌入式测试服务器场景，生产路径必须校验指纹。</div>
+
+<h3>2.3 PTY——本章最重要的术语</h3>
+<p><b>PTY（Pseudo-TERMinal，伪终端）</b>是操作系统提供的一对虚拟字符设备，模拟"插了一台终端机"：</p>
+<div class="flow">PTY 主端 (master, /dev/ptmx)  ←——— 内核里的"管道+线路规程" ———→  PTY 从端 (slave, /dev/pts/0,1,2...)
+       你的程序（SSH 服务端）在这里读写              程序（bash/vim/top）以为自己在和真实终端对话</div>
+<ul>
+<li>程序输出 <code>ls</code> 结果时从端是"显示器"；你敲键时从端是"键盘"。</li>
+<li>从端有<b>行规程（line discipline）</b>：处理 <code>^C</code>（SIGINT）、<code>^?</code>（SIGQUIT）、退格、以及 <b>ECHO 回显</b>——你在终端敲的字符会被内核原样打回来，这就是"你看到的字是回显，不是程序打印的"。</li>
+<li>为什么 SSH 必须要 PTY：<b>没有 PTY，bash 认为自己处在脚本环境</b>——不打印提示符、不加载交互式配置、vim/top 直接罢工（它们需要 ioctl 设置终端尺寸、raw mode）。
+  SSH 客户端请求"pty-req"通道扩展，远端 sshd 就分配一个 PTY 并把 bash 的 stdin/stdout/stderr 全接到从端。</li>
+<li>尺寸同步：窗口缩放时客户端发 <code>window-change</code> 消息，sshd 用 <code>TIOCSWINSZ</code> ioctl 改从端尺寸，bash 收到 SIGWINCH 重排版——xterm.js 的 fit 插件算出行列数，通过我们的 WebSocket <code>TerminalInput.resize</code> 传到后端。</li>
+</ul>
+<div class="card why"><b class="tag">WHY 本项目共享一个持久 PTY</b>
+Shell 模式（人敲）和 Agent 模式（AI 注入命令）<b>共用同一条 shell 通道的 PTY</b>，而不是各开一条。
+理由：AI 的工作目录、环境变量、后台进程必须和你手敲的完全一致（你在 shell 里 <code>cd /opt/app</code> 后问 AI"看下日志"，AI 必须知道自己在 /opt/app）。
+代价是输入权争用——这直接催生了第五章的 <code>PtyCommandScheduler</code> 状态机。这是一个"用复杂度换正确体验"的典型取舍。</div>
+
+<h3>2.4 终端不只是字符流：ANSI/VT 转义序列</h3>
+<p>终端输出流里混着两类字节：<b>可见文本</b>和<b>控制指令</b>（以 ESC=<code>0x1B</code> 开头的转义序列）：</p>
+<table>
+<tr><th>序列</th><th>含义</th><th>项目中出现的位置</th></tr>
+<tr><td><code>ESC[31m</code> / <code>ESC[0m</code></td><td>CSI 序列：设置红色/复位——颜色和光标移动都靠 CSI</td><td>xterm.js 渲染 <code>ls --color</code>；CSP 曾误拦 xterm 动态样式表导致终端掉色（known-issues）</td></tr>
+<tr><td><code>ESC]0;文本 BEL</code></td><td>OSC 序列：设置窗口标题。OSC 是"带字符串参数的系统指令"</td><td><b>Shell 集成的命脉</b>：项目用自定义 OSC 帧在字节流里打"命令边界"暗号（5.4 节）</td></tr>
+<tr><td>惰性提示符</td><td>bash 的 PS1 只在有键盘输入被 readline 处理时才刷新</td><td>导致"AI 执行完提示符不出来"类 BUG——必须服务端主动补画（架构记忆：回合收尾链路）</td></tr>
+</table>
+
+<h3>2.5 exec 通道 vs shell 通道 vs SFTP 子系统</h3>
+<table>
+<tr><th>方式</th><th>特点</th><th>本项目用途</th></tr>
+<tr><td><b>exec</b>（ssh exec / Channel）</td><td>一条命令、拿完 stdout/exit code 就走；<b>没有 PTY</b>（默认），无状态</td><td><code>SshExecService</code>：只读工具兜底、失败分类采集；Agent 命令在 shell 集成未装成功时"回落 exec"</td></tr>
+<tr><td><b>shell</b>（PTY + 交互 bash）</td><td>有状态（cwd/env 延续）、输出是字节大海（混杂回显/提示符/ANSI）</td><td>人机共用主通道；<code>SshTerminalSession</code></td></tr>
+<tr><td><b>sftp</b>（子系统子系统）</td><td>SSH 通道上跑 SFTP 协议——结构化的 打开/读目录/写文件 RPC</td><td><code>SftpService</code> 列目录/浏览 + <code>TransferService</code> 传输</td></tr>
+</table>
+<p><b>SFTP ≠ FTP</b>：FTP 是明文、双 TCP 连接（21 控制 + 被动模式数据）的远古协议；SFTP 是 SSH 的<b>子系统</b>
+（<code>subsystem sftp</code> 请求复用加密通道），天然加密、天然认证、单连接。<code>FileTransfer</code> 表管的是 SFTP 传输任务的生命周期。</p>
+
+<h3>2.6 本章术语速览</h3>
+<div>
+<span class="term">KEX 密钥交换</span><span class="term">Host Key 主机密钥</span><span class="term">Channel 通道复用</span>
+<span class="term">PTY 伪终端 ptmx/pts</span><span class="term">line discipline 行规程</span><span class="term">ECHO 回显</span>
+<span class="term">SIGWINCH</span><span class="term">ANSI CSI</span><span class="term">OSC 转义序列</span>
+<span class="term">TOFU 首次信任</span><span class="term">exec/shell/sftp channel</span><span class="term">keepalive 保活</span>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="ch3"><span class="no">第三章</span>技术栈地图：每样工具为什么在这</h2>
+
+<h3>3.1 后端（backend/，Java 21 + Spring Boot 3.5）</h3>
+<table>
+<tr><th>组件</th><th>版本</th><th>在本项目中的职责</th><th>为什么选它</th></tr>
+<tr><td>Spring Boot Web</td><td>3.5.16</td><td>REST API（契约生成）+ 托管前端静态资源</td><td>桌面形态要求"单 jar 即全部"，后端同源托管前端，省掉独立 Web 服务器与 CORS</td></tr>
+<tr><td>spring-boot-starter-websocket</td><td>-</td><td>三条 WS 通道：/ws/terminal、/ws/ai、/ws/approval</td><td>终端字节流、AI token 流、审批推送都是<b>服务器主动推</b>的场景，REST 请求-响应模型天然不适配</td></tr>
+<tr><td><b>sshj</b></td><td>0.40.0</td><td>SSH <b>客户端</b>库：连接、认证、shell/exec 通道、SFTPClient</td><td>纯 Java、API 直白（<code>SSHClient.sh()</code> 拿 Shell）；相比 JSch 的停更与算法陈旧，sshj 维护活跃、支持现代密钥格式（OpenSSH v9 / PKCS8 / PuTTY）</td></tr>
+<tr><td><b>Apache MINA SSHD</b></td><td>2.15.0</td><td>SSH <b>服务端</b>，但只用于<b>测试</b>：进程内起一个真 SSH/SFTP 服务器</td><td>SFTP/PTY 这类"和真协议栈交互"的代码，mock 出来的测试是假的；嵌入式真服务器 = 集成测试跑在 CI，无需外部主机</td></tr>
+<tr><td>Spring AI</td><td>1.1.8</td><td>LLM 调用 + <b>tool calling</b>（@Tool 注解暴露只读/副作用工具）</td><td>统一 ChatModel 抽象与 FunctionCallback 机制，Agent 循环不用手写协议解析</td></tr>
+<tr><td>MyBatis-Plus + SQLite + Flyway</td><td>-</td><td>10 张表持久化；Flyway 管 schema 迁移</td><td>单机桌面应用零部署：SQLite 是单文件库；Flyway 保证老用户升级安装时表结构平滑演进</td></tr>
+<tr><td>java-keyring</td><td>1.0.4/1.1.0</td><td>读写操作系统密钥库（Windows 凭据管理器 / macOS Keychain / Secret Service）</td><td>主密钥不能进 SQLite，交 OS 级存储托管（第七章）</td></tr>
+<tr><td>openapi-generator</td><td>-</td><td>从 contract/openapi.yaml 生成后端接口骨架 + 前端 TS 客户端</td><td>契约先行：前后端并行开发不靠嘴对齐，字段拼错编译期就爆</td></tr>
+<tr><td>Jacoco + Surefire</td><td>0.8.12</td><td>分支覆盖率门禁 ≥0.70（<code>mvn verify</code> 硬卡）</td><td>AI 生成代码的"信任基础设施"：没覆盖的分支=没证据的代码</td></tr>
+</table>
+
+<h3>3.2 前端（frontend/，Vue 3 + TypeScript）</h3>
+<table>
+<tr><th>组件</th><th>职责 / 选型理由</th></tr>
+<tr><td><b>@xterm/xterm 5.5</b></td><td>浏览器里的终端模拟器——把 ANSI 转义序列渲染成彩色文本网格。自研不现实，xterm.js 是 VS Code 终端同款、事实标准。配 <b>addon-fit</b> 根据容器像素算出行列数，回传后端做 window-change。</td></tr>
+<tr><td>Pinia</td><td>全局状态：hosts/workspaces/stores/ws 连接态。终端这种"多 tab 各自独立连接 + 全局配置"的形态需要集中状态管理，且按 tab 隔离审批状态。</td></tr>
+<tr><td>Vite + vue-tsc + Vitest</td><td>构建 / 类型检查（build 前 <code>--noEmit</code> 全量把关）/ 单元测试。type-check 是第二道编译期门禁。</td></tr>
+</table>
+
+<h3>3.3 规格与流程工件</h3>
+<ul>
+<li><b>contract/openapi.yaml + asyncapi.yaml</b>：REST 与 WS 帧的唯一事实源。WS 帧在 Java 侧手写（裸字符串测试才能证明 snake_case 键名真的在线上传得出去，见 <code>WsContractAlignmentTest</code> 29 个用例）。</li>
+<li><b>openspec/specs/*</b>：10 项能力规格（ssh-connection / terminal-workspace / ai-agent / command-approval / credential-store / model-provider / sftp-transfer / conversation-management / agent-context / model-provider），变更走 changes/ 提案→实施→归档流程。</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="ch4"><span class="no">第四章</span>架构与设计思想：这套系统是怎么想问题的</h2>
+
+<h3>4.1 分层：controller → service → ssh/ai 领域包，entity/mapper 数据壳</h3>
+<div class="flow">controller/   REST 适配层（只做状态码翻译与参数搬运，薄）
+service/      业务编排（Host/Session/Conversation/Transfer 生命周期）
+ssh/          SSH 领域：连接、PTY、shell 集成、命令调度、SFTP     ← 本书重点
+ai/           Agent 领域：模型接入、上下文构建、工具、think 解析
+approval/     审批闸门（横切：AI 副作用操作的人审关卡）
+security/     凭据加密、令牌、票据、审计脱敏（横切安全层）
+desktop/      桌面壳协同：回环守卫、启动令牌、优雅关闭
+ws/           WebSocket 协议层：三条通道的 handler + 帧模型
+entity/ mapper/ config/ support/</div>
+<p>判断一个类放哪层的试金石：<b>"换一个 Web 框架它还要不要？"</b>要 → 领域包；不要 → controller/ws。</p>
+
+<h3>4.2 核心设计原则（从代码注释里"考古"出来的 WHY）</h3>
+
+<h4>原则一：唯一收口（Single Funnel）</h4>
+<p>全项目只有 <code>SshConnectionService</code> 能创建 SSHClient。因为超时、主机密钥策略、keepalive、失败分类这四件事，
+<b>任何一件散落到调用点，就会有一个调用点漏配</b>。同类应用：只有 <code>TransferContentController</code> 碰下载流；只有 <code>SessionControlService</code>/ticket 服务持有敏感令牌。</p>
+
+<h4>原则二：状态机显式化，拒绝"如果……就……"式的散落判断</h4>
+<p>两处最重的状态机：<code>PtyCommandScheduler</code>（谁拥有 PTY 输入权）与 <code>ApprovalGate</code>（审批票据生命周期）。
+显式状态 + 合法迁移写在一个类里，非法迁移直接不可表示。副作用是并发 bug 无处藏身。</p>
+
+<h4>原则三：降级路径是设计出来的，不是碰运气</h4>
+<ul>
+<li>shell 集成只认 bash——非 bash（csh/fish/受限环境）时：<b>不写钩子、不装调度器、不动输出链</b>，人工终端与 SFTP 完全不受影响，Agent 命令回落 exec 通道。</li>
+<li>OS 密钥库不可用：应用照常启动（只告警），给用户留"改用主密码"的自救通道——把启动变成硬门禁等于锁死唯一生路。</li>
+<li>下载票据机制失效场景：宁可 409/404 明确拒绝，不放行"看起来大概也许没问题"的传输。</li>
+</ul>
+
+<h4>原则四：协议上"能测"优先于"能跑"</h4>
+<p>WS 帧测试坚持手写裸 JSON 字符串而不是构造 Java 对象再序列化：<b>自造帧会抵消注解写错键名的风险</b>——
+线上真实的契约是 snake_case 字节，测试必须锚定字节而不是锚定对象。这一条是契约驱动开发的最后一公里。</p>
+
+<h4>原则五：内存有界（Bounded Memory）</h4>
+<table>
+<tr><th>场景</th><th>界限</th><th>实现</th></tr>
+<tr><td>上传/下载文件（最大 10 GiB）</td><td>恒定 64 KiB 缓冲</td><td><code>TransferContentController</code> 用 servlet 原始流 + StreamingResponseBody，绝不 Resource 全量加载</td></tr>
+<tr><td>终端断线重连补屏</td><td>tail 环形缓冲</td><td>TerminalWebSocketHandler 只留尾部若干 KB + gap 检测（补不齐就明确告知"有缺失"）</td></tr>
+<tr><td>命令输出采集</td><td>64 KiB 采集上限</td><td>超限继续排空 PTY、只丢弃超额内容——排空是为了不堵死对方</td></tr>
+<tr><td>审批帧出站积压</td><td>512 KiB 即断开</td><td>ConcurrentWebSocketSessionDecorator；超限=前端已死，留着只会白占内存</td></tr>
+</table>
+
+<h3>4.3 三条 WebSocket 通道为什么分开</h3>
+<table>
+<tr><th>通道</th><th>方向</th><th>帧</th><th>为什么单独一条</th></tr>
+<tr><td>/ws/terminal</td><td>双向，高频字节</td><td>输出块/输入键/resize</td><td>性能敏感（每键每字节流经），协议与业务无关，不能和 JSON 控制帧抢一条连接的语义</td></tr>
+<tr><td>/ws/ai</td><td>服务器推为主</td><td>token 流/think/tool 事件/回合边界</td><td>流式 LLM 输出节奏特殊（增量+可中断），停止按钮要能掐断</td></tr>
+<tr><td>/ws/approval</td><td>双向，低频小帧</td><td>approval_request / approval_response</td><td>审批是<b>全局广播+带超时</b>的人机交互，缓冲策略（512KiB）与终端（更大）不同；分开才能独立做背压策略</td></tr>
+</table>
+
+<h3>4.4 前端同源托管 vs 自定义协议加载（一次被推翻的设计）</h3>
+<div class="card why"><b class="tag">决策案例</b>Electron 传统做法是 <code>file://</code> 或自定义协议加载页面。本项目选择<b>后端 HTTP 同源托管</b>：
+① CSP、Cookie（HttpOnly）、相对路径 API 全部天然工作，不必为自定义协议重写安全边界；
+② 打包产物校验时发现两条加载路径的差异会制造"开发正常、打包掉色"类环境性 bug（CSP style-src 拦截 xterm 动态样式表事件）；
+③ 桌面壳只剩"起进程 + 开窗 + 传令牌"三件事，复杂度全留在可测试的 Java 侧。被否决方案的成本在 known-issues 里留下了真实学费。</div>
+<!-- ============================================================ -->
+<h2 id="ch5"><span class="no">第五章</span>终端链路深潜：PTY、命令帧与调度状态机</h2>
+
+<h3>5.1 一条 SSH 连接的完整生命周期（SshConnectionService + SshTerminalService）</h3>
+<ol>
+<li><b>解析目标</b>：<code>CredentialBackedSshTargetResolver</code> 按 hostId 从凭据库解密出 <code>SshTarget</code>（明文密码只活在内存 <code>SecretText</code> 里，用后即焚——它实现了可擦除的 char[] 语义，而不是 String）。</li>
+<li><b>握手与认证</b>：sshj <code>SSHClient.connect()</code> → 验主机密钥 → password 或 publickey 认证（支持 OpenSSH v9 / PKCS8 / PuTTY 格式私钥，加密私钥用 PasswordFinder 现取现用）。</li>
+<li><b>申请 PTY + shell</b>：<code>client.sh()</code>  internally 发 pty-req + shell 两个通道消息；<code>SshTerminalSession</code> 包装 Shell，起两条<b>读泵线程</b>分别盯 stdout/stderr。</li>
+<li><b>登记</b>：<code>SessionRuntime</code>（聚合：SSH 会话 + 录制器 SessionRecorder + 调度器）注册进 <code>TerminalSessionRegistry</code>；<code>DatabaseSessionRecorder</code> 把会话元数据落到 SQLite 的 sessions 表。</li>
+<li><b>保活与回收</b>：SSH keepalive 探测半开连接；<code>TerminalIdleReaper</code> 定时巡检——浏览器崩了没人发关闭帧，空闲超时后服务端主动断开，不然 PTY/线程/远端 sshd 进程会泄漏。</li>
+<li><b>失败分类</b>：<code>SshFailureKind</code> + <code>SshCloseReason</code> 把 ConnectException/NoRoute/Auth 失败/算法协商失败等归类，前端才能给出人话错误而不是 stack trace。</li>
+</ol>
+
+<h3>5.2 网页终端怎么显示：WebSocket 桥接（TerminalWebSocketHandler）</h3>
+<p>后端本质是一个<b>双向泵</b>：PTY 字节 → UTF-8 解码 → WS TextMessage → xterm.js <code>term.write()</code>；键盘反之。
+但纯转发不够，本项目加了三层工业级处理：</p>
+<ul>
+<li><b>tail 环形缓冲 + gap 检测</b>：WS 断了重连，新连接上来先回放缓冲里的最近输出；如果断线期间产生的输出已溢出缓冲（有缺口 gap），帧里明确携带"有缺失"标志——<b>宁可告诉你缺，绝不假装完整</b>。</li>
+<li><b>ConcurrentWebSocketSessionDecorator</b>：一条 WS 会话同一时刻只允许一个线程发送（协议规定），装饰器做发送锁+字节上限+时间上限，防止慢客户端把服务端内存顶爆。</li>
+<li><b>帧协议精简</b>：终端通道不塞 JSON 业务帧（那是 ai/approval 通道的事），保证高频字节流的低开销。</li>
+</ul>
+
+<h3>5.3 核心难题：怎么从"字节大海"里知道一条命令跑完了？</h3>
+<p>PTY 输出是无结构的字符海：回显、提示符、ANSI 序列、程序输出混在一起。AI 执行 <code>mvn package</code> 后凭什么说"完成了，退出码是 1"？
+答案：<b>Shell Integration——用 OSC 转义序列在字节流里打暗号</b>。</p>
+<div class="flow">向 bash 注入钩子（PROMPT_COMMAND / 调试陷阱），让 bash 在命令边界打印不可见控制帧：
+
+  $ mvn package
+  ESC]1337;CMD_START{id=42,cmd=...}BEL   ← 命令开始（回车被 readline 消费时）
+  [大量正常输出…]
+  ESC]1337;CMD_END{id=42,code=1}BEL      ← 命令结束+退出码
+  ESC]1337;PROMPT{seq=7}BEL               ← 提示符真正画出来了=PTY 空闲可注入
+
+服务端 ShellFrameDecoder 逐字节剥离这些 OSC 帧，转成干净文本+事件；
+没装钩子的普通终端里它们是非法 OSC，被 xterm.js 直接忽略——协议对人不透明。</div>
+<div class="card danger"><b class="tag">踩坑实录（known-issues #14）</b>安装钩子代码是"打"进交互式 bash 的，bash 的 readline 会<b>自己回显你敲给它的字符</b>——这不受 tty ECHO 标志控制（<code>stty -echo</code> 压不住）！
+回显出来的还是安装脚本的字面源码，解码器也剥不掉。唯一可靠治理点：<b>服务端闸门</b>——写安装代码<b>之前</b>先把输出链切到闸门监听器，
+吞掉"首个真实控制帧到达前"的一切转发，钩子生效后自动放行；超时兜底防止把用户终端哑掉。教训：<b>tty 之下皆字节流，你以为关掉的开关可能根本不管这段路。</b></div>
+
+<h3>5.4 PtyCommandScheduler：谁拥有共享 PTY 的输入权</h3>
+<p>状态机（每会话一个实例）：</p>
+<div class="flow">manual_idle ──AI领任务──▶ agent_owned ──CMD_END+PROMPT──▶ manual_idle
+     ▲  ▲                        │
+     │  └──无输出超时/中断无证据──▶ unknown（保守：什么都不注入）
+     │
+ manual_busy（用户半行输入/粘贴/全屏程序/嵌套shell中——禁止注入）
+   └ 自愈：用户停手超过 busy 时限且无 CMD_START 证据 → 清行回落 idle</div>
+<ul>
+<li><b>串行执行</b>：并发写入共享 stdin 会让输出交错到无法归属，所以一条命令必须拿到"CMD_END+PROMPT 双证据"才允许下一条。</li>
+<li><b>双层超时</b>（BUG-A 教训）：旧版"30 分钟绝对超时"把持续输出的 <code>yum install</code> 误杀了。新语义：<b>60 秒无任何输出/帧活动</b>才算卡死，命令只要还在说话就视为活着；30 分钟绝对上限只兜底。</li>
+<li><b>manual_busy 死锁案例</b>（最有价值的 bug）：用户按"停止回合"后键盘活动把状态标成 busy → busy 状态下 AI 提交被拒、不发命令 → 不发命令就没有 PROMPT 帧 → 而 busy 的旧唯一恢复证据恰恰是 PROMPT 帧。<b>"拒绝 → 无帧 → 永久 busy"的自锁闭环</b>，恢复证据依赖被自己拒绝的事件。修复：busy 增加"无 CMD_START 证据即可自愈"的独立出口。教训：设计状态机时，每个阻塞态必须问一遍——它的恢复证据会不会被这个状态本身掐断。</li>
+</ul>
+
+<h3>5.5 重连语义：reset agent memory on reconnect</h3>
+<p>WS 断开重连后，终端画面可以靠 tail 缓冲补齐，但 <b>LLM 的对话上下文不能靠猜</b>：断线期间用户手动敲了什么，模型一无所知。
+所以规格明确：重连时重置该会话的 Agent 记忆，防止模型基于过时状态行动。"补屏"与"补上下文"是两个性质完全不同的问题。</p>
+
+<!-- ============================================================ -->
+<h2 id="ch6"><span class="no">第六章</span>AI Agent 集成与审批闸门</h2>
+
+<h3>6.1 Agent 工具面（AgentTools + Spring AI tool calling）</h3>
+<table>
+<tr><th>类别</th><th>工具</th><th>执行策略</th></tr>
+<tr><td>只读</td><td>list_dir / read_file / exec 查询类</td><td><b>自动执行</b>——读不改变世界，审批只该拦"改变世界"的动作</td></tr>
+<tr><td>副作用</td><td>run_command / write_file / delete</td><td><b>必须过 ApprovalGate</b>；文件修改先备份→审批→提交删备份，回滚恢复备份</td></tr>
+</table>
+
+<h3>6.2 ApprovalGate：一张会过期的票据</h3>
+<div class="flow">AI 提议 → ApprovalProposal(命令+风险分析+工具参数) → Ticket(approvalId, version=1, 60s TTL)
+  → /ws/approval 广播 approval_request（snake_case 契约帧）
+  → 人三选一：
+      approve  → respond(id, APPROVE) 或 respondWithVersion(id, APPROVE, expectedVersion)
+      cancel   → 终结本回合（BUG-G 定稿：拒绝事实不回喂模型、不发起下一轮）
+      modify   → 改命令文本 + expected_version 匹配才生效，版本号 +1，
+                 执行侧回读"生效命令"——AI 看到的、人批的、PTY 跑的三者必须一致
+  → 超时/版本不匹配 → respond 返回 false，只记日志不炸链</div>
+<ul>
+<li><b>版本化 modify 的并发问题</b>：AI 提议 v1，人还没点，AI 上下文已推进修改提案为 v2——此时用户的"批准 v1"必须被拒。expected_version 是乐观锁在"人机交互"维度的应用。</li>
+<li><b>审批隔离粒度 = tab（一次连接实例）</b>：同一服务器的多个连接互不阻塞，审批事件携带归属连接。杜绝"全局单槽审批互相覆盖"。</li>
+<li><b>UI 定稿（两轮回撤的教训）</b>：非阻断浮动弹窗负责决策 + 命令文本按时间序写入共享 xterm 留痕（<code>$ cmd ⏳待审批 → 已批准执行</code>）。三条红线：布局唯一、命令完整呈现、不重复弹出。</li>
+</ul>
+
+<h3>6.3 模型接入与上下文工程</h3>
+<ul>
+<li><b>OpenAI 兼容统一收口</b>（<code>OpenAiCompatibleChatModelProvider</code>）：无论背后是 OpenAI/DeepSeek/Ollama，只走一套 base_url + /chat/completions + api_key。项目规矩：模型配置只允许这三样，杜绝各家 SDK 分裂。</li>
+<li><b>InlineThinkTagParser</b>：不少兼容网关不返回独立 reasoning 字段，而是把思考混在正文 <code>&lt;think&gt;</code> 标签流里。逐 token 增量解析这个流（标签可能被切片跨帧），把"思考"与"答案"分流到不同前端渲染。</li>
+<li><b>AgentContextBuilder + ContextTokenEstimator + ContextLimitClassifier</b>：终端输出是 token 黑洞（一条命令几十 KB 输出）。构建上下文时估算 token、超限分类处理（截断策略要显式，不能让 SDK 默默截走关键信息）。</li>
+<li><b>回合收尾不变量</b>：AI 回答结束 → 终端必须自动换行、画出待输入提示符、光标就位——不等用户敲键盘。"状态变更结束时自绘到位"是产品验收红线（与"Shell/Agent 切换不得有连接中提示"同源）。</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="ch7"><span class="no">第七章</span>安全设计：本地授权、凭据加密，以及 JWT 原理对照</h2>
+
+<h3>7.1 先建立框架：这个项目的安全模型不是"网站登录"</h3>
+<p>传统 Web 安全三件套是 账号体系 + Session/JWT + RBAC。本项目的场景完全不同：<b>单用户、本机运行、进程间通信</b>。
+它防的不是"别人登录我的号"，而是：</p>
+<ol>
+<li><b>局域网/本机其他进程冒充浏览器</b>调用这个"能执行任意 SSH 命令"的后端 → 桌面授权模型解决；</li>
+<li><b>磁盘上的敏感数据泄密</b>（SQLite 被拷走、内存 dump、日志泄露）→ 密钥库信封解决；</li>
+<li><b>协议层攻击</b>（路径穿越、缓存投毒、时序侧信道）→ 逐项加固解决。</li>
+</ol>
+
+<h3>7.2 桌面授权：回环绑定 + 启动令牌 + HttpOnly Cookie</h3>
+<div class="flow">Electron 壳启动时：生成随机启动令牌 → 环境变量注入后端子进程
+浏览器页面加载 → 携令牌 POST → DesktopGuardFilter 校验 → 下发 HttpOnly 会话 Cookie
+此后所有 REST/WS 必须带 Cookie，否则 401
+同时 server.address=127.0.0.1 显式绑定（Spring Boot 默认 0.0.0.0 —— 那会把任意 SSH 执行端口暴露到局域网！）</div>
+<div class="card why"><b class="tag">WHY 这不是多此一举</b>"客户端无需登录"≠"无授权"。Cookie 存在证明调用方是从壳里加载的页面，
+而不是本机恶意进程直接 curl 127.0.0.1:8080。配合回环绑定，攻击面从"整个网络"缩到"本机同用户"——而本机同用户能干的坏事（直接读你的私钥文件）本来就不需要攻破这个端口。</div>
+
+<h3>7.3 顺带把 JWT 原理学了——然后说明为什么这里不用它</h3>
+<h4>JWT 是什么</h4>
+<p>JSON Web Token = 三段 <code>Base64URL</code> 用点连接：<code>header.payload.signature</code></p>
+<div class="flow">eyJhbGciOiJIUzI1NiJ9 . eyJzdWIiOiJ1c2VyLTEyMyIsImV4cCI6MTcz... . SflKRx...
+   {alg:HS256,typ:JWT}   {claims: sub/exp/iat/jti/自定义}      签名</div>
+<ul>
+<li><b>签名算法</b>：HS256（对称，服务端一把密钥 HMAC 签名，适合单体自签自验）；RS256/ES256（非对称，认证中心私钥签、资源服务公用公钥验，适合微服务/第三方接入）。</li>
+<li><b>校验流程</b>：服务端<b>不查库</b>，重算一遍 HMAC 对比签名 → 签名真 + exp 未过期 → 直接信任 payload 里的身份。这就是"无状态"的含义与优势：水平扩展不需要共享 session store。</li>
+<li><b>payload 只是编码不是加密</b>：Base64URL 人人可解，所以 JWT 里绝不放敏感数据，完整性全靠签名。</li>
+<li><b>经典难点（背下来面试必问）</b>：无法主动失效——token 在 exp 前永远有效。注销/封号要靠黑名单（又回到查库）、短 exp+refresh 轮换、或 jti 撤销表。</li>
+</ul>
+<h4>JWT vs Session vs 本项目的启动令牌</h4>
+<table>
+<tr><th></th><th>JWT</th><th>传统 Session</th><th>本项目（启动令牌→HttpOnly Cookie）</th></tr>
+<tr><td>状态在哪</td><td>无状态，全在 token</td><td>服务端内存/Redis</td><td>服务端 <code>DesktopSessionStore</code> 内存</td></tr>
+<tr><td>主动撤销</td><td>难（需黑名单）</td><td>删一条即失效</td><td>重启后端进程即全部作废（本地场景天然短生命周期）</td></tr>
+<tr><td>适用场景</td><td>多服务、跨域、水平扩展</td><td>单体、集中会话</td><td>单用户、本机、零账号体系</td></tr>
+<tr><td>本项目取舍</td><td colspan="3"><b>不用 JWT 的理由</b>：①没有"多实例横向扩容"需求，无状态优势用不上；②端口一旦泄露危害极大，需要<b>即时可撤销</b>的授权，无状态 token 反而做不到；③引入 JWT 意味着签名密钥管理、过期刷新链路——为一个永不联网认证的场景增加真实攻击面。安全设计的铁律：<b>机制的复杂度必须有对应的威胁模型来买单</b>。</td></tr>
+</table>
+
+<h3>7.4 凭据加密：信封格式 + OS 密钥库主密钥</h3>
+<p>用户存进 SQLite 的 SSH 密码/私钥/模型 API Key，都是这样一行密文：</p>
+<div class="flow">"v1." + Base64URL( { "v":1,
+                       "kp": "os-keyring" | "master-password",   ← 用哪把主密钥解
+                       "iv": &lt;12B b64&gt;,                          ← AES-GCM 随机向量
+                       "ct": &lt;密文+GCM认证标签&gt;,
+                       "salt": &lt;16B&gt;?, "it": 迭代次数? } )        ← 仅主密码路径需要</div>
+<ul>
+<li><b>信封自描述</b>：密钥来源、算法参数、KDF 元数据全在密文自己身上，"密文与解密所需信息永不分离"。将来调高 PBKDF2 迭代次数，历史密文照样解得开（salt/it 跟着密文走）。</li>
+<li><b>AES-256-GCM</b>：认证加密（AEAD）——不光保密，GCM 标签还保证没被篡改；12 字节 IV 一次一用。</li>
+<li><b>两级主密钥</b>：优先 OS keyring（Windows 凭据管理器/macOS Keychain，密钥不落盘）；不可用则主密码经 PBKDF2 高次迭代派生。密钥库缺失时<b>只告警不拒启动</b>——否则用户没了改配置的自救通道。</li>
+<li><b>SecretText</b>：明文凭据用可擦除容器承载，用后清零，不留 String 常量池尸体。</li>
+</ul>
+
+<h3>7.5 其他加固点清单（每条都能在代码里找到）</h3>
+<table>
+<tr><th>威胁</th><th>对策</th><th>代码锚点</th></tr>
+<tr><td>时序侧信道猜 token</td><td><code>MessageDigest.isEqual</code> 常量时间比较</td><td>SessionControlService / DownloadTicketService / ApprovalGate</td></tr>
+<tr><td>内存 dump / 日志泄露 token</td><td>控制令牌 256-bit 随机、服务端<b>只存 SHA-256 散列</b>、明文只在创建瞬间返回一次；审计日志正则脱敏</td><td><code>AuditRedactionService</code></td></tr>
+<tr><td>路径穿越读 /etc/shadow</td><td><code>SftpService.validatePath</code>：拒 NUL/CR/LF/相对路径/<code>..</code>，只放行绝对路径</td><td>ssh/SftpService.java</td></tr>
+<tr><td>下载票据重放</td><td>单次消费即失效 + 绑定 transfer + 最长 30 分钟 + 领新票废旧票</td><td>DownloadTicketService</td></tr>
+<tr><td>缓存投毒 / Referer 泄露文件名</td><td>响应头 <code>Cache-Control: no-store</code> + <code>Referrer-Policy: no-referrer</code></td><td>TransferContentController</td></tr>
+<tr><td>越权脚本/内容嗅探</td><td>CSP 策略（含踩坑：style-src 曾误拦 xterm 动态样式表致打包版终端掉色）</td><td>desktop/ 静态托管配置</td></tr>
+<tr><td>CSRF / 跨域凭证</td><td>前端同源托管，HttpOnly Cookie + SameSite；不开 CORS 白名单</td><td>DesktopStaticHostingConfiguration</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="ch8"><span class="no">第八章</span>SFTP 文件传输：大文件不过内存的完整案例</h2>
+
+<h3>8.1 为什么上传下载不走 JSON/REST 常规路</h3>
+<p>常规 Spring MVC 用 <code>@RequestBody Resource</code> 接文件 = 先把整个文件（最大 10 GiB）缓冲到磁盘临时文件再包装，内存/磁盘双爆炸；
+Base64 入 JSON 更是膨胀 33%。所以 <code>openapi.yaml</code> 里 TransferContent 标了 <code>x-skip-codegen: true</code>——<b>契约先行也有边界，生成器做不了的流式端点手写，但契约文档照写不误</b>。</p>
+
+<h3>8.2 下载全链路（面试可整段背诵）</h3>
+<div class="flow">① POST /transfers/{id}/ticket 领票（256-bit 随机，服务端只存散列，领新废旧，≤30 分钟）
+② GET /transfers/{id}/content?ticket=xxx
+   → startDownload：原子消费票据 + 状态 READY→TRANSFERRING（并发抢同一票只有一个成功）
+   → 返回 StreamingResponseBody：64 KiB 循环搬运 SFTP 流 → HTTP 响应流，恒定内存
+   → finally completeDownload 更新状态（失败只告警不击穿响应流）
+   安全头三件套：no-store / Referrer-Policy: no-referrer / Content-Disposition（RFC 6266：
+   ASCII 回退名 + UTF-8 filename* 双写，非 ASCII 字符替换为下划线，控制字符不留）</div>
+<ul>
+<li><b>为什么要票据而不能"直接 GET 就下"</b>：GET 无请求体、浏览器地址栏/Referer/历史都会泄露 URL，一次性短效票据把"下载授权"从 URL 长期有效降级为短窗口单次有效；即使泄露，消费即废。</li>
+<li><b>为什么状态机卡这么严（queued→ready→transferring→completed/failed/expired）</b>：传输任务是跨进程生命周期的资源，任何一步都可断点可观测；配额（并发槽位）检查只在创建时做，防止把远端 sshd 连接打爆。</li>
+<li><b>每会话 SFTP 句柄上限 2</b>（SftpService.MAX_HANDLES_PER_SESSION）：句柄是远端资源，泄漏一个就是在客户机器上留一个坑；分页游标也有 TTL（CursorExpiredException）。</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="ch9"><span class="no">第九章</span>工程质量体系：AI 生成的代码凭什么可信</h2>
+
+<h3>9.1 SDD：Spec-Driven Development（OpenSpec 工作流）</h3>
+<div class="flow">提案 propose（proposal.md + design.md + specs 差量 + tasks.md）
+  → 实施 apply（TDD：先红后绿，逐 task 勾选）
+  → 评审（Spec 合规 + 代码质量双维）
+  → 归档 archive（差量规格合入 openspec/specs/ 主规格库）</div>
+<p>已归档 7 个变更（add-ssh-ai-agent-mvp、multi-session-agent-terminal、jacoco 门禁、cancel 收尾、busy 死锁修复……）。
+每个 bug 修复也是一个正式变更——<b>修 bug 先修规格</b>，防止"代码改对了、文档还承诺旧的"。本项目甚至有一条 pitfall 记忆叫"规格承诺强于设计保证导致验收不可实现"：写 spec 时承诺了实现方做不到的事，验收就会死锁——规格是要被验证的合同，不是愿望清单。</p>
+
+<h3>9.2 测试金字塔（855 个后端用例怎么组织）</h3>
+<table>
+<tr><th>层</th><th>例子</th><th>关键思想</th></tr>
+<tr><td>纯单元</td><td>InlineThinkTagParser、ShellFrameDecoder、状态机迁移表</td><td>不需任何 IO，毫秒级；非法迁移直接断言不可达</td></tr>
+<tr><td>Mockito 接线</td><td>ApprovalWebSocketHandlerTest（闸门→帧翻译矩阵）、TransferContentControllerTest（状态码翻译）</td><td>只测"接线"不测业务；WS 测试手写<b>裸 JSON 字符串</b>验证 snake_case 线上契约</td></tr>
+<tr><td>嵌入式集成</td><td>SftpServiceTest：MINA SSHD 进程内真服务器 + sshj 真客户端 + 真 SFTP 协议报文</td><td><b>mock 出来的传输测试是假的</b>；协议交互用真实现测</td></tr>
+<tr><td>Spring 上下文</td><td>@SpringBootTest 集成 REST+安全头+异常翻译</td><td>慢但覆盖装配错误</td></tr>
+<tr><td>前端</td><td>Vitest + @vue/test-utils；WsContractAlignmentTest 29 用例双端对齐帧</td><td>契约测试防"后端改字段前端静默挂"</td></tr>
+</table>
+<div class="card"><b class="tag">实用 Mockito 经验（本项目真实踩过）</b>
+① 对已 stub 成 thenThrow 的方法再次 <code>when(...)</code> 求值时会直接触发旧 stub 把异常抛进测试自身 → 多异常场景用 <code>doThrow(ex).when(mock).method(args)</code>；
+② 不能在 when 参数位现造 mock（UnfinishedStubbing）→ 先建好返回值再打桩；
+③ 序列化含 OffsetDateTime 的帧，ObjectMapper 必须 registerModule(JavaTimeModule)，否则失败被吞成 debug 日志，现象是"就是收不到帧"。</div>
+
+<h3>9.3 JaCoCo 分支覆盖率门禁：数字背后的方法论</h3>
+<ul>
+<li>门槛写在 <code>pom.xml</code> 的 jacoco:check 规则（counter=BRANCH, COVEREDRATIO ≥ 0.70），<code>mvn verify</code> 不达标直接 BUILD FAILURE——门禁的意义是<b>不可绕过</b>，可绕过的门禁等于没有。</li>
+<li>为什么用分支覆盖而不是行覆盖：行覆盖 90% 的系统可能每个 if 的 else 从没走过；AI 生成代码最典型的盲区就是<b>异常分支和边界条件没被验证</b>，分支覆盖率恰好打的在这个穴门上。</li>
+<li>渐进式策略：0.65 基线测量 → 0.70 门禁 → 补测试（复活被禁用的 SftpServiceTest 一次捡回 50 个分支，新建两个测试类再补 36 个）——先基线、再卡门、再补，顺序不能反。</li>
+<li>Git hooks 双闸门：pre-commit 按改动子仓跑对应门禁，pre-push 跑测试+覆盖率；AI 参与的代码库里，机械闸门比人工 review 更早拦截回退。</li>
+</ul>
+
+<h3>9.4 并发与资源管理专题（散布在各类的隐性知识）</h3>
+<ul>
+<li><b>读泵线程</b>：SSH 输出必须专人专线程阻塞式读（不读会背压堵死远端），用 CopyOnWriteArrayList 承接并发写。</li>
+<li><b>Future.get 双层超时陷阱</b>：等待方超时必须晚于执行方调度器超时，否则等待方先抽风、执行方还在干活——"谁超时谁负责"要有全局序。</li>
+<li><b>Windows 子进程不跑 shutdown hook</b>：强杀 Electron 子进程时 JVM 优雅关闭不执行，必须显式 IPC（DesktopShutdownController 收尾 REST 调用）代替隐式钩子。</li>
+<li><b>出站缓冲超限即断</b>：WebSocket 发送锁竞争下慢消费者的帧会在装饰器缓冲里堆积，超过 512 KiB 抛 SessionLimitExceededException——handler 主动关连接并移出活跃表而不是重试：前端已死，留着只会每次广播都白跑一趟。</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="ch10"><span class="no">第十章</span>简历与面试弹药：把项目翻译成量化成果</h2>
+
+<h3>10.1 简历项目段落（可直接拷，数据均来自仓库实测）</h3>
+<div class="resume">
+<h4>AnanoesisShell —— 多连接 AI 运维终端（Web / Electron 桌面） <span class="pill">Java 21 · Spring Boot 3.5 · Vue 3</span></h4>
+<p style="color:var(--dim);font-size:14px">定位：集成 LLM Agent 的网页/桌面 SSH 客户端（类 OrcaTerm + AI），人审批、机执行，支持多连接 tab 隔离。独立完成后端 182 个类、前端全栈与 Electron 桌面化，三仓 Git Submodule 管理，v0.1.0 已发布 GitHub Release。</p>
+<ul>
+<li>设计 <b>SSH 共享 PTY 双输入仲裁机制</b>：基于自研 OSC 控制帧协议（CMD_START/END/PROMPT）+ 五态调度状态机，实现人机共用一条持久 PTY 的命令归属识别与串行执行，命令完成判定准确至退出码级；定位并修复"恢复证据自依赖"型 busy 死锁、分钟级长命令误杀（双层超时重构）等 6 类并发状态机缺陷。</li>
+<li>实现 <b>LLM 工具调用 + 人工审批闸门</b>（Spring AI tool calling）：只读操作自动执行、副作用操作 60s TTL 版本化票据人审，乐观锁防止过期审批生效；支持 modify 乐观并发升级与取消即终结回合，保障 AI 可见/人批/实执行三方一致。</li>
+<li>落地 <b>本地威胁模型安全设计</b>：后端回环绑定 + 启动令牌换 HttpOnly Cookie；凭据采 AES-256-GCM 自描述信封加密，主密钥托管 OS 密钥库（DPAPI/Keychain）、PBKDF2 主密码双路回退；令牌/票据仅存 SHA-256 散列 + 常量时间比较防时序攻击；SFTP 路径穿越校验、下载一次性限时票据、no-store/CSP 加固。</li>
+<li>实现 <b>10 GiB 级大文件恒定内存传输</b>：servlet 原始流 + StreamingResponseBody 64KiB 分块、票据原子消费与状态机断点可观测；WebSocket 断线 tail 环形缓冲 + gap 感知补屏。</li>
+<li>建立 <b>规格驱动（SDD）+ 质量闸门工程体系</b>：OpenAPI/AsyncAPI 契约先行双端代码生成与 29 项契约对齐用例；JaCoCo 分支覆盖率门禁 0.65→0.70，后端 <b>855 用例全绿</b>；MINA SSHD 嵌入式真服务器集成测试；Git Hooks 提交/推送双拦截；Electron+NSIS 桌面分发与同源托管架构（规避 CORS/协议处理器一类环境问题）。</li>
+</ul>
+</div>
+
+<div class="card why"><b class="tag">量化数据从哪里来（你以后自己也能提炼）</b>
+可验证数字：855 后端用例（surefire 报告）、分支覆盖 ≥70%（jacoco:check 日志）、182 个分析类、10 张 Flyway 表、9 个 REST 控制器、3 条 WS 通道、≤64KiB 恒定传输内存、审批 60s/票据 30min 安全时限、三仓 + submodule + v0.1.0 Release。写法公式：<b>动词 + 约束/难度 + 机制 + 可验证结果</b>，拒绝"参与/协助"类弱化词。</div>
+
+<h3>10.2 面试官会顺着简历问什么（附答案锚点）</h3>
+<div class="qa"><summary>"PTY 到底是什么？为什么 SSH 需要它？"</summary><div>主/从设备对，从端给程序一个"真终端"幻觉（行规程/ECHO/ioctl 尺寸）；无 PTY 则 bash 非交互、vim 不可用；SSH 用 pty-req 请求远端 sshd 分配。（详 2.3）</div></div>
+<div class="qa"><summary>"你怎么知道一条命令执行完了？退出码哪来的？"</summary><div>bash 钩子（PROMPT_COMMAND）发 OSC 控制帧，服务端解码器剥离并解析 CMD_END 携带的退出码；非 bash 降级 exec 通道拿协议层 exit-status。（详 5.3）</div></div>
+<div class="qa"><summary>"人和 AI 共用一个终端，怎么防打架？"</summary><div>输入权状态机：只认"空提示符"证据才注入，人工半行/粘贴/全屏程序一律 busy；串行 + 双证据推进；busy 有独立自愈出口。（详 5.4）</div></div>
+<div class="qa"><summary>"为什么不用 JWT？那 JWT 原理说说？"</summary><div>三段式签名令牌，无状态验签、难主动撤销；本项目单用户本机场景需要即时撤销授权且无扩容需求，启动令牌+HttpOnly Cookie 攻击面更小。能讲清"机制复杂度必须由威胁模型买单"即是满分答案。（详 7.3）</div></div>
+<div class="qa"><summary>"密码存在数据库里怎么算安全？"</summary><div>不存密码存信封密文；加密两层：数据密钥 AES-GCM 一次一密，主密钥交 OS 密钥库或 PBKDF2 派生；参数自描述保证算法可演进。加分点：密钥库不可用时"告警不拒启动"的自救设计。（详 7.4）</div></div>
+<div class="qa"><summary>"10GiB 文件下载怎么不把服务端的内存干掉？"</summary><div>不反序列化、不 Resource 包装，SFTP 流→64KiB 循环→StreamingResponseBody；票据原子消费防重放；completeDownload 失败不击穿已开流的 finally 收尾。（详 8.2）</div></div>
+<div class="qa"><summary>"AI 写的代码你怎么保证质量？"</summary><div>分支覆盖率而非行覆盖率（AI 盲区在异常分支）；门禁不可绕过（mvn verify + pre-push）；协议测试验证线上字节而非 Java 对象；真协议栈集成测试而非 mock。（详第九章）</div></div>
+
+<h3>10.3 技能关键词清单（简历技能栏直接可用）</h3>
+<p>Java 21 · Spring Boot 3.5 · Spring WebSocket · Spring AI · 并发状态机设计 · SSH 协议/PTY/SFTP · Apache MINA SSHD · sshj · SQLite/Flyway/MyBatis-Plus · AES-GCM 信封加密/PBKDF2/OS Keyring · 时序安全比较 · Vue 3 · TypeScript · Pinia · xterm.js · Electron · OpenAPI/AsyncAPI 契约先行 · TDD/JaCoCo/Git Hooks · Git Submodule 多仓交付 · OpenSpec 规格驱动开发</p>
+
+<!-- ============================================================ -->
+<h2 id="appendix"><span class="no">附录</span>中英术语速查表</h2>
+<table>
+<tr><th>术语</th><th>英文</th><th>一句话定义</th><th>本书位置</th></tr>
+<tr><td>伪终端</td><td>PTY (Pseudo-Terminal)</td><td>master/slave 虚拟设备对，让网络程序拥有真终端体验</td><td>2.3</td></tr>
+<tr><td>密钥交换</td><td>KEX (Key Exchange)</td><td>DH 类协议协商会话对称密钥，顺带验证服务器身份</td><td>2.2</td></tr>
+<tr><td>主机密钥</td><td>Host Key</td><td>服务器的长期身份密钥，防中间人</td><td>2.2</td></tr>
+<tr><td>通道</td><td>Channel</td><td>一条 SSH 连接内的逻辑子会话（shell/exec/sftp…）</td><td>2.1/2.5</td></tr>
+<tr><td>行规程</td><td>Line Discipline</td><td>内核处理终端回显/控制键/分行的层</td><td>2.3</td></tr>
+<tr><td>转义序列</td><td>ANSI CSI / OSC</td><td>ESC 开头的控制指令：CSI 管颜色光标，OSC 带字符串参数</td><td>2.4/5.3</td></tr>
+<tr><td>首次信任</td><td>TOFU</td><td>第一次连接时人工确认指纹并留底</td><td>2.2</td></tr>
+<tr><td>审批闸门</td><td>Approval Gate</td><td>AI 副作用操作的人审关卡，带 TTL 与乐观版本</td><td>6.2</td></tr>
+<tr><td>乐观锁</td><td>Optimistic Locking</td><td>不锁资源，提交时校验版本号冲突则拒</td><td>6.2</td></tr>
+<tr><td>认证加密</td><td>AEAD (AES-GCM)</td><td>加密+完整性校验一体，篡改即解密失败</td><td>7.4</td></tr>
+<tr><td>密钥派生</td><td>KDF (PBKDF2)</td><td>口令→密钥，靠高迭代次数拖慢爆破</td><td>7.4</td></tr>
+<tr><td>常量时间比较</td><td>Constant-time Compare</td><td>比较耗时不依赖匹配前缀长度，防时序侧信道</td><td>7.5</td></tr>
+<tr><td>令牌</td><td>JWT / Bearer Token</td><td>自包含签名凭证，无状态验签</td><td>7.3</td></tr>
+<tr><td>回环绑定</td><td>Loopback Binding</td><td>只监听 127.0.0.1，不对网络暴露端口</td><td>7.2</td></tr>
+<tr><td>一次性票据</td><td>One-time Ticket</td><td>短效单次凭证，消费即废，只存散列</td><td>8.2</td></tr>
+<tr><td>背压</td><td>Backpressure</td><td>下游消费不动时上游的传导压力；不处理则内存爆</td><td>4.2/5.2</td></tr>
+<tr><td>分支覆盖</td><td>Branch Coverage</td><td>每个 if/switch 分支都被测试走过的比例</td><td>9.3</td></tr>
+<tr><td>契约先行</td><td>Contract-First / Codegen</td><td>先写 OpenAPI 再生成双端代码，编译期对齐</td><td>3.3/9.1</td></tr>
+</table>
+
+<footer>AnanoesisShell 学习手册 · 基于仓库 main 分支（backend a2282b0 / 855 用例全绿基线）编写 · 本文件不在 git 管理内（命中 .tmp-* 忽略规则），可任意改名移到 docs/ 外的位置保存</footer>
+</main>
+</div>
+</body>
+</html>
