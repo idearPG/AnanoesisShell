@@ -94,3 +94,32 @@ openspec validate --all --strict
 - 即使前后端产物已存在且代码未变，发布时仍必须重新编译打包，确保产物与当前源码一致。
 - 清库步骤不可跳过：安装包不携带数据库，但本机验证安装时需要干净首启体验；文件被运行中后端锁住时，必须先停掉后端再构建，不得用 `-SkipWipe` 绕过。
 - `-Skip*` 开关仅供本地调试构建使用，任何面向发布（GitHub Release、安装包分发、版本打 tag）的构建一律禁止。
+
+## 9. 浏览器真实操作验证门禁（打包上传前置，强制）
+任何新功能扩展、行为修复或回归修复，在打包安装包、上传发布之前，**必须**完成一轮浏览器真实操作验证；未通过验证禁止进入第 8 节的发布构建。单元/集成测试通过不能替代本门禁。
+
+### 9.1 环境准备（真实进程，非 mock）
+- 后端真实启动：`backend\mvnw.cmd spring-boot:run`（当前开发端口 18080），日志完整留档（如 `.tmp-probe/backend-*.log`）。
+- 前端真实启动：`frontend` 下 `npm run dev`（vite，3000 端口），日志留档。
+- 健康检查：`/actuator/health` 必须返回 `{"status":"UP"}`（含 db 组件 UP），不得用前端 200 替代后端健康判断。
+
+### 9.2 浏览器以真实用户角度操作（chrome-devtools MCP）
+- `navigate_page` 打开 `http://localhost:3000/`，以真实用户角度逐步走通：添加专用测试服务器（当前 192.168.237.131，root/root；按环境更新）→ 配置模型（API Key 从 `docs/默认业务空间-apiKey-*.csv` 读取，不硬编码）→ 保存设置 → 建立终端连接。
+- Shell 模式：真实键入命令验证回显、输出、Ctrl-C 等交互。
+- Agent 模式：REST `POST /api/conversations` 创建会话后经 WS 发送提问，验证审批卡片（右下角浮动弹窗 + 命令留痕写入 xterm）、批准/拒绝、工具执行（list_dir / read_file 等必须返回**真实数据**，禁止幻觉空输出）、[思考] 段落 dim 淡化渲染、回合收尾回到 ❯ 提示符。
+- 深度驱动：页面刷新或钩子丢失时，用 `evaluate_script` 遍历 Vue 3 vnode（#app / #app-shell 的 `__vueParentComponent` → 递归 component/subTree/children）定位含 `setupState.sendAiMessage` 的 WorkspaceView 实例，挂到 `window.__wsViewComp` 后调用 `sendAiMessage(会话id, 文本)` 驱动真实组件链路。
+
+### 9.3 静置观察（防泄漏回归）
+- 验证完成后记录基线：终端总行数、探针串（`_ANANOESIS_NESTED_PROBE_`）出现次数、重复提示符（如 `[root@localhost ~]# [root@localhost ~]#`）次数。
+- 静置 ≥ 90 秒（≥ 11 个探测周期，探测周期 8 秒），期间不操作。
+- 断言：行数不增、探针 0 次、重复提示符 0 次；并查后端日志确认探测周期稳定、无嵌套误判与重装风暴。
+- 截图与数据留证（如 `.tmp-probe/browser-*.png`），作为验证证据记录在任务总结中。
+
+### 9.4 验证通过后的发布链路
+浏览器验证全部通过后，才允许：全量构建（第 8 节，禁止 `-Skip*`）→ 生成安装包 → 上传 GitHub Release（写操作用新路径 `idearPG/AnanoesisShell`）→ 资产 digest 与本地 SHA256 逐字节核验。
+
+### 9.5 禁止事项
+- 禁止未做浏览器真实操作验证直接打包上传。
+- 禁止以单元/集成测试、本地 REST 直调、模拟帧代替真实用户操作。
+- 禁止跳过静置观察；防探针泄漏/重复提示符类回归必须以静置数据为证。
+- 禁止以"看起来没问题"、单次截图无观察数据作为验证结论。
