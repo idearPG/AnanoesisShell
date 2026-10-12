@@ -48,6 +48,7 @@ coverage/
 .cache/
 .tmp-probe/
 .tmp-*
+.vite/
 
 # ---- 敏感运维文件（含凭据，绝不入库）----
 deploy/.env.production
